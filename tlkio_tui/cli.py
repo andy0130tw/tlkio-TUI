@@ -12,7 +12,7 @@ from .app import TlkioApplication
 
 logging.basicConfig(
     filename='tui.log',
-    level=logging.DEBUG)
+    level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 
@@ -22,34 +22,30 @@ app = TlkioApplication(state)
 
 
 async def connect_background():
-    # to postpone...
-    # await asyncio.sleep(0.1)
     limit = 1000
 
     try:
         # FIXME: use asyncio.subprocess
-        with subprocess.Popen(
-            ['yarn', '--silent', 'start'],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        proc:asyncio.Process
+        proc = await asyncio.create_subprocess_exec(
+            *['yarn', '--silent', 'start'],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
-            cwd='../tlkio-js') as subp:
+            cwd='../tlkio-js')
 
-            payload = {
-                'chat_id': '8412377',
-                'limit': limit,
-            }
-            subp.stdin.write(json.dumps(payload).encode())
-            subp.stdin.write(b'\n')
-            subp.stdin.flush()
+        payload = {
+            'chat_id': '8412377',
+            'limit': limit,
+        }
 
-            cnt = 0
-            for s in subp.stdout:
-                app.prependHistory(s.decode())
-                cnt += 1
-                if cnt >= limit:
-                    break
-                # workaround; otherwise the UI would be blocked
-                await asyncio.sleep(0)
+        proc.stdin.write(json.dumps(payload).encode())
+        proc.stdin.write(b'\n')
+        await proc.stdin.drain()
+
+        for _ in range(limit):
+            s = await proc.stdout.readline()
+            app.prependHistory(s.decode())
 
     except asyncio.CancelledError:
         logger.info('Background task is interrupted.')
@@ -57,6 +53,10 @@ async def connect_background():
         import traceback
         app.promptError(traceback.format_exc())
         logger.exception('*** Exception in background task ***')
+    finally:
+        # FIXME: result in an unavoidable "RuntimeError: Event loop is closed"
+        proc.kill()
+        await proc.wait()
 
 
 async def run_main_loop():

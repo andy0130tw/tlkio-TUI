@@ -35,6 +35,7 @@ class TlkioApplication(Application):
     def promptError(self, text):
         self.layout.dialog.body.text = text
         self.state.dialog_shown = True
+        self.invalidate()
 
     def dismissPrompt(self, dialog):
         # WIP
